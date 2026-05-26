@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Smart Budget AI</title>
+    <!-- Telegram WebApp Script -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Chart.js Library -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        :root {
+            --bg-color: var(--tg-theme-bg-color, #fff);
+            --text-color: var(--tg-theme-text-color, #000);
+            --hint-color: var(--tg-theme-hint-color, #999);
+            --link-color: var(--tg-theme-link-color, #3390ec);
+            --button-color: var(--tg-theme-button-color, #3390ec);
+            --button-text-color: var(--tg-theme-button-text-color, #fff);
+            --secondary-bg: var(--tg-theme-secondary-bg-color, #f0f0f0);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        h2, h3 {
+            text-align: center;
+            margin: 0;
+        }
+
+        .card {
+            background-color: var(--secondary-bg);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        label {
+            font-size: 14px;
+            color: var(--hint-color);
+            font-weight: 500;
+        }
+
+        input, select {
+            padding: 14px;
+            border-radius: 12px;
+            border: 1px solid transparent;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input:focus, select:focus {
+            border-color: var(--link-color);
+        }
+
+        .btn-primary {
+            background-color: var(--button-color);
+            color: var(--button-text-color);
+            border: none;
+            padding: 16px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            transition: opacity 0.2s;
+        }
+
+        .btn-primary:active {
+            opacity: 0.8;
+        }
+
+        .btn-secondary {
+            background-color: transparent;
+            color: var(--link-color);
+            border: 2px solid var(--link-color);
+            padding: 14px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        #chart-container {
+            height: 250px;
+            position: relative;
+            margin: 20px 0;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+        
+        #ai-advice {
+            margin-top: 15px;
+            font-size: 15px;
+            line-height: 1.5;
+            background: rgba(0,0,0,0.05);
+            padding: 15px;
+            border-radius: 12px;
+            border-left: 4px solid var(--link-color);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Секция 1: Форма добавления -->
+    <div class="card" id="add-section">
+        <h2>💸 Новый расход</h2>
+        <br>
+        <div class="input-group">
+            <label for="amount">Сумма (тенге)</label>
+            <input type="number" id="amount" placeholder="Например: 1500" inputmode="decimal">
+        </div>
+        <div class="input-group">
+            <label for="category">Категория</label>
+            <select id="category">
+                <option value="food">🍔 Еда</option>
+                <option value="taxi">🚕 Такси</option>
+                <option value="study">📚 Учеба</option>
+                <option value="fun">🎉 Развлечения</option>
+                <option value="other">📦 Другое</option>
+            </select>
+        </div>
+        <button class="btn-primary" onclick="sendData()">Добавить расход</button>
+    </div>
+
+    <!-- Секция 2: График и Статистика -->
+    <div class="card hidden" id="stats-section">
+        <h3>📊 Расходы за неделю</h3>
+        <div id="chart-container">
+            <canvas id="expenseChart"></canvas>
+        </div>
+        <div id="ai-advice">Загрузка совета...</div>
+        <button class="btn-secondary" onclick="hideStats()">← Назад к форме</button>
+    </div>
+
+    <script>
+        let tg = window.Telegram.WebApp;
+        tg.expand(); // Раскрыть на весь экран
+
+        // Функция отправки данных боту
+        function sendData() {
+            let amount = document.getElementById('amount').value;
+            let category = document.getElementById('category').value;
+
+            if (!amount || amount <= 0) {
+                tg.showAlert("Введите корректную сумму!");
+                return;
+            }
+
+            let data = {
+                action: "add_expense",
+                amount: parseFloat(amount),
+                category: category
+            };
+
+            tg.sendData(JSON.stringify(data)); 
+            document.getElementById('amount').value = '';
+            tg.HapticFeedback.notificationOccurred('success');
+        }
+
+        // Функция отображения статистики
+        function showStats(chartData, adviceText) {
+            const statsSection = document.getElementById('stats-section');
+            const addSection = document.getElementById('add-section');
+            const chartCanvas = document.getElementById('expenseChart');
+            const adviceDiv = document.getElementById('ai-advice');
+
+            addSection.classList.add('hidden');
+            statsSection.classList.remove('hidden');
+
+            adviceDiv.innerHTML = adviceText;
+
+            if (window.myChart) {
+                window.myChart.destroy();
+            }
+
+            const labels = Object.keys(chartData);
+            const dataValues = Object.values(chartData);
+            
+            // Цвета для категорий
+            const colors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF'];
+
+            window.myChart = new Chart(chartCanvas, {
+                type: 'doughnut',
+                data: {
+                    labels: labels.map(l => l === 'food' ? 'Еда' : 
+                                          l === 'taxi' ? 'Такси' : 
+                                          l === 'study' ? 'Учеба' : 
+                                          l === 'fun' ? 'Развлечения' : 'Другое'),
+                    datasets: [{
+                        data: dataValues,
+                        backgroundColor: colors,
+                        borderWidth: 0,
+                        hoverOffset: 10
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: tg.themeParams.text_color || '#000',
+                                font: { size: 12, family: 'sans-serif' },
+                                padding: 20
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function hideStats() {
+            document.getElementById('stats-section').classList.add('hidden');
+            document.getElementById('add-section').classList.remove('hidden');
+        }
+
+        // Проверка данных при загрузке (из URL параметров)
+        window.onload = function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const dataParam = urlParams.get('data');
+            
+            if (dataParam) {
+                try {
+                    const parsedData = JSON.parse(decodeURIComponent(dataParam));
+                    showStats(parsedData.chart_data, parsedData.advice);
+                } catch (e) {
+                    console.error("Ошибка парсинга данных", e);
+                }
+            }
+        };
+        
+        tg.ready();
+    </script>
+</body>
+</html>
